@@ -1,0 +1,622 @@
+---
+title: "Network Modeling - HS 2023"
+author:
+  - C. Stadtfeld, A. Espinosa-Rada, A. Uzaheta 
+  - Early versions by K. Mepham, V. Amati
+subtitle: Introduction to `R`
+output:
+  pdf_document:
+    fig_caption: yes
+header-includes: 
+  - \renewcommand{\and}{\\}
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, error = TRUE)
+```
+
+This is not a course to learn `R`, it just is an introduction that is supposed to 
+create the basic understanding of `R`.
+There are a lot of excellent online courses available. Recommended are, for example,
+the following:
+
+\url{https://r4ds.hadley.nz/}\
+\url{http://www.statmethods.net/}\
+\url{http://www.burns-stat.com/pages/Tutor/hints_R_begin.html}\
+\url{https://adv-r.hadley.nz/}\
+
+You can go to any of these sites to learn the basics of `R` or refresh your knowledge.
+
+# What is R?
+
+`R` is a language and environment for statistical computing and graphics. 
+It is a GNU project providing a wide variety of statistical 
+(linear and nonlinear modeling, classical statistical tests, 
+time-series analysis, classification,
+clustering, ...) and graphical techniques, 
+and it is highly extensible (source \url{http://www.r-project.org/}).
+
+RStudio is a convenient integrated development environment (IDE) for `R`, consisting of four windows (locations according to the default setup):
+
+* editor window (upper left): collections and commands are edited and saved
+* console (lower left): where `R` computes and execute the commands
+* environment (upper right): shows which data and values `R` has in its memory
+* files/plots/packages/help window(lower right):
+  you can open files, view plots (also previous plots), install and load packages 
+  or use the help function.
+
+
+# Rscripts
+
+`R` scripts are files containing the sequence of commands that should be executed.
+
+The Rscript `RIntro.R` contains the commands that are illustrated in this introduction. 
+You can load the file in RStudio (_File_ $\rightarrow$ _Open file_) and run the commands. 
+To do this you select the commands and click on the icon _Run_ in the upper right 
+corner of the editor window. You can also use the keyboard shortcut _Ctrl+Enter_ 
+for Windows and _Cmd+Return_ for Mac. 
+ 
+# R as a calculator
+The program `R` can be used as a calculator. Standard arithmetic operators are
+`+`, `-`, `*`, and `/` for add, subtract, multiply and divide,
+and `^` for exponentiation. 
+Mathematical functions, such as `sqrt`, `exp`, and `log` are also defined and compute 
+the square root, exponential and logarithm of a number.
+
+```{r calculator}
+# R as a calculator
+5 + 8
+15^2
+exp(3)
+log(1)
+sqrt(4)
+```
+
+The relational operators `<=`, `<`, `==`, `>`, `>=` and `!=` for less than or equal, less than, 
+equal, greater than, greater than or equal, and not equal can be used to create 
+logical expressions that take values `TRUE` and `FALSE`. `TRUE` and `FALSE` are binary 
+statements and are internally evaluated as 1 and 0, respectively.
+
+```{r logical}
+5 > 3
+a <- 4
+b <- 6
+a == b
+(a == b) * 1 # FALSE is evaluated as 0
+a <= b
+(a <= b) * 1 # TRUE is evaluated as 1
+```
+
+# Data structures
+Everything in `R` is an object. An object is a data structure having 
+some characteristics (attributes) and methods which act on its attributes.
+The most frequently used objects are vectors, matrices, array, lists and functions.
+
+To assign a value to an object we use the code `name <- value`. 
+The symbol `<-` is the assignment operator, read as "gets". 
+`R` now accepts the equal sign as well as an assignment operator. 
+A valid name consists of letters, numbers, and the dot or underscore characters. 
+`R` is case sensitive which means that capital and small letters make differences.
+
+## Vectors
+Vectors are the simplest objects in `R`. A `vector` is defined as an ordered collection 
+of numbers or characters. Different functions allow creating a `vector`.
+
+
+* The function `c()`, short for concatenate, is used to create vectors 
+  from scalars or other vectors. Since `c()` is the function that concatenates values,
+  please do not use `c` as a name of an `R` object.
+* The colon operator `:` is used to generate a sequence of integers. 
+* The `seq()` function creates a sequence given the starting and stopping 
+points (arguments `from =` and `to =`) and an increment (argument `by =`).
+*  The rep function is used for repeat or replicate elements a certain number of times
+    - argument `times =` giving the number of times to repeat the whole `vector`.
+    - argument `length.out =` with the desire length of the output `vector`.
+    - argument `each =` repeating `each` times each element of the `vector`.
+
+
+The following lines demonstrate the use of these functions.
+
+```{r vector, message=TRUE}
+# Function c
+vec0 <- c(2, 3, 4)
+vec0
+# WARNING:
+# do not use c as a name of an R object!!!
+
+Vec0
+# WARNING:
+# R is case sensitive!!! Therefore, Vec0 is different from vec0
+
+# Colon operator
+vec1 <- 1:3
+vec1
+
+# The seq function
+vec2 <- seq(from = 2, to = 5, by = 0.5)
+vec2
+
+# The rep function
+vec3 <- rep(1:3, times = 2)
+vec3
+
+# Character vector
+vec4 <- c("a", "b", "c")
+vec4
+```
+
+`R` operations are vectorized. Arithmetic and relational operators work element by element. 
+When computing an operation (e.g., the sum) between two vectors of different length, 
+the shorter one will be repeated until it has the same length as the longer one. 
+This rule is referred to as the recycling rule. 
+
+```{r vector math}
+vec0 + vec1
+log(vec1)
+length(vec1)
+sum(vec1) 
+max(vec1) 
+min(vec1)
+
+# The recycling rule
+vec0 + vec3
+```
+
+To extract specific elements from a `vector` we use one of the subsetting operators.
+The square brackets are used for this, the subscript of the elements wanted is placed inside them.
+
+```{r vector element}
+vec2[1] 
+vec2[c(1, 3)]
+```
+
+## Matrix
+A `matrix` is a generalization of a `vector` and the simplest `array` object.
+It is a vector with two additional attributes: the number of rows and the number of columns 
+^[Taken from [The art of R programming](https://diytranscriptomics.com/Reading/files/The%20Art%20of%20R%20Programming.pdf)]. 
+In a similar way to the vectors, the matrix is an ordered collection of
+elements having all the same nature (usually numbers). We can create matrices using:
+
+* the function `matrix()`, with arguments the values of the cells (`data =`), 
+  number of rows (`nrow =`), number of columns (`ncol =`), and whether the
+  matrix should be filled by row or by column (`byrow =`, default value `FALSE`)
+* the functions `rbind()` and `cbind()` to bind vectors by row or by column.
+  _Note:_ `rbind()` and `cbind()` have different methods depending on the class
+  of the object. They work in `vector`, `matrix` or `data.frame` objects,
+  returning an objects of the same class and applying coercion when needed it.
+
+
+The following lines demonstrate the use of these methods.
+
+```{r matrix}
+# The function matrix
+mat1 <- matrix(1:10, nrow = 2, ncol = 5, byrow = FALSE)
+mat1
+mat2 <- matrix(1:10, nrow = 2, ncol = 5, byrow = TRUE)
+mat2
+
+
+# Functions rbind and cbind
+mat3 <- rbind(vec0, vec1)
+mat3
+# or as column vectors
+mat4 <- cbind(vec0, vec1)
+mat4
+
+# Number of rows and columns
+dim(mat1)
+```
+
+The following lines illustrate how to compute some basic operations with matrices
+and how to extract elements from it.
+
+```{r matrix math}
+mat1 * mat2
+# WARNING: the operator * computes the element-wise (Hadamard) product!!!
+#          The operator for the matrix product is %*%
+mat5 <- mat1 %*% t(mat2)
+mat5
+
+solve(mat5) # Calculates the inverse
+det(mat5) # Calculates the determinant
+t(mat1) # Calculates the transpose
+# WARNING:
+# t() is the function that computes the transpose of a matrix.
+# Do not use t as the name of an R object!!!
+```
+
+The elements of a matrix may be exatracted using the row and column subscripts in
+square brackets, separated by a comma. 
+
+```{r matrix element}
+mat1
+mat1[1, 2]     # single cell
+mat1[1,]      # first raw
+mat1[, 1]      # first column
+mat1[-1, -1]   # A negative pair results in a minor matrix 
+              # where a column and a row are omitted.
+ 
+```
+
+## Array
+The `array` extends `matrix` to a multidimensional structure with more layers than only row and columns. 
+It can be seen as a collection of matrices having the same number of rows and columns. 
+An `array` can be created using the function `array()` with arguments 
+the values of the cells (`data =`), and a vector specifying the number of rows, 
+columns and matrices (`dim =`).
+
+```{r array}
+arr0 <- array(1:48, dim = c(4, 4, 3))
+arr0
+arr1 <- array(c(mat1, mat2), dim = c(2, 5, 2))
+arr2 <- array(c(mat1, mat2, mat4), dim = c(2, 5, 3))
+```
+
+The elements of an `array` are extracted using the row, column and layer 
+subscripts in square brackets, separated by a comma.
+Arrays can stored multidimensional objects beyond collections of matrices (3-dim),
+therefore the dimensions don't have an specified name in general.
+
+```{r array element}
+# How could you address the first layer (matrix) of arr1?
+arr1[, , 1]
+# How could you address the first row of each layer in arr1?
+arr1[1, , ]
+# How could you address the first column of each layer in arr1?
+arr1[, 1 , ]
+```
+
+
+## Lists
+A `list` is an object consisting of a collection of objects which might 
+have different nature, i.e. they might be vectors, matrices, array or lists as well. 
+Many `R` functions return the results in a list and therefore it is important to 
+understand how lists work.
+To extract elements of a list is possible to use another subsetting operator,
+the double square bracket (_simplifying subsetting for list objects_).
+The difference between the simple square bracket and the double square bracket
+is [preserving vs. simplifying](https://adv-r.hadley.nz/subsetting.html).
+
+> "Simplifying subsets returns the simplest possible data structure that
+  can represent the output, and is useful interactively because it usually
+  gives you what you want. Preserving subsetting keeps the structure of the
+  output the same as the input, and is generally better for programming because
+  the result will always be the same type." from Advance R by Hadley Wickham.
+
+```{r list}
+list0 <- list(vector = vec0, matrix = mat1)
+str(list0)
+list0[[1]]
+list0[["matrix"]][,1:3]
+```
+
+## Data frame
+A data frame extends the matrix and list object. It can have columns of different data 
+type and can be thought of the usual case by variable data matrix. 
+Data frames can be created using the function \texttt{data.frame} with arguments
+the variables that constitute the column of the object. 
+
+```{r data frame}
+# Creating data frames
+peopleid <- 1:10
+gender <- rep(c("Male", "Female", NA), times = c(4, 5, 1))
+# data frame can also handle missing values that are usually coded as NA (not available)
+set.seed(1908)
+age <- sample(20:30, 10)
+age
+height <- rnorm(n = 10, mean = 165, sd = 5) |> ceiling()
+dat1 <- data.frame(id = peopleid, gender = gender, age = age, height = height)
+
+# Inspecting a data frame
+head(dat1) # shows the first six lines
+dim(dat1) # returns the number of rows and columns
+names(dat1) # shows the names of the columns
+summary(dat1) # summary statistics for each column
+
+# The elements of a data.frame can be addressed as in a matrix
+dat1[1, 2] # single cell
+dat1[1, ] # first raw
+dat1[, 1] # first column
+
+# OBSERVATION: name of the columns can be used to address columns
+dat1$id
+dat1[, "id"]
+# How could you extract id and age variables?
+dat1[, c("id", "age")]
+```
+
+### Object structure and coercion
+If we have an object `x` and we would like to know what it is, 
+we can use the following functions:
+
+```{r structure}
+x <- mat2
+is.vector(x)
+is.matrix(x)
+is.data.frame(x)
+str(x)
+class(x)
+```
+
+We can also coerce objects into particular structures
+
+```{r coercion}
+y <- as.vector(mat2)
+z <- as.matrix(y) # Vector are coerced into column matrix
+
+u <- as.data.frame(mat2) 
+u
+
+# OBSERVATION: R automatically creates column names 
+# when using the function as.data.frame
+# To change these column names we can use the function names
+
+names(u) <- c("a","b","c","d","e")
+u
+```
+
+## Pipe operator, placeholder and anonymous functions
+
+In `R` version 4.1.0 the native pipe operator `|>` was introduced.
+It allows simplifying code with nested parentheses, that is usually complex to read and understand by a chain of functions calls linked by the pipe operator.
+The [pipe operator as introduced](https://ivelasq.rbind.io/blog/understanding-the-r-pipe/) by the `magrittr` package is an infix operator that chain what is written on the left-hand-side of the pipe into the first argument of the function on the right-hand-side of the pipe.
+
+```{r pipe, eval=FALSE}
+# nested parentheses
+with(subset(iris, Species == "setosa"), mean(Sepal.Length))
+
+# pipe operator
+subset(iris, Species == "setosa") |>
+  with(mean(Sepal.Length))
+
+```
+
+For `R` version higher than 4.2.0 there is also available anonymous functions `\(x){ ... }` and underscore `_` as the placeholder for the pipe operator.
+
+```{r anony, eval=FALSE}
+# base R
+function(x) x[which.max(x$Sepal.Length)]
+
+# anonymous function
+\(x) x[which.max(x$Sepal.Length)]
+
+# placeholder
+iris |> 
+  by(iris$Species, \(x) mean(x$Sepal.Length)) |>
+  Reduce(f = c, x = _)
+
+```
+
+
+# Control flow statements
+
+From [Advance R](https://adv-r.hadley.nz/control-flow.html).
+
+> There are two primary tools of control flow: choices and loops.
+  Choices like `if` statements and `switch()` calls, allows you to run different
+  code depending on the input.
+  Loops, like `for` and `while`, allow you to repeatedly run code, typically with
+  changing options.
+
+## Conditional statements
+
+The `if` statement allows to run a block of code between curly brackets
+if the test expression that gives the condition is evaluated to the logical value
+`TRUE`. It's worth to mention that the if statement expects a test expression of
+length one. That's why the longer form of the logical operators (`&&` and `||`) is preferred. See ``?`&&` `` for details.
+
+```{r conditional statement}
+# if (condition: logical value) {expression to do}
+
+if (a  > b && b > 1) {
+  print("a is bigger than b")
+  c <- a + b
+} else if (b > a) {
+  print("a is bigger than b")
+  c <- b - a
+} else
+  print("a is equal to b")
+
+# the longer form of the logical operators (&&, ||) is preferred for
+# programming control-flow and typically use in `if` clauses
+
+# vectorised if
+# ifelse(condition, when TRUE, when FALSE)
+vec2Modified <- ifelse(vec2 > 3, vec2 + 2, vec2 * 2)
+vec2Modified
+```
+
+The `ifelse()` function is the vectorized version of the conditional statement.
+It's useful to replace values in a vector given a condition. 
+
+## Loops
+The for and while construction perform loops in R.
+
+```{r loop}
+# for (i in set of values) {expression to do}
+
+# For example, we can use a for loop to compute the sum of the values
+# in each row of the matrix mat2
+for (i in 1:nrow(mat2)) {
+  x <- sum(mat2[i,])
+  print(x)}
+
+# Other loop construction:
+# while (condition) {expression}
+# repeat {expression}
+```
+
+# Function definition
+In the previous lines, we have encountered a few functions. We can also create our own functions. To specify a function we use the following code:
+
+```{r exFun, eval=FALSE}
+name <- function(arguments) {
+  body of the function
+}
+```
+
+
+```{r function, include=TRUE, echo=TRUE, message = FALSE}
+# We can create a function sumrow that computes the sum of each row
+# in a matrix x and return them in a vector called rowsum
+
+sumrow <- function(x){
+  rowsum <- NULL
+  for (i in 1:nrow(x)) {
+    rowsum[i] <- sum(x[i,])
+  }
+  return(rowsum)}
+
+sumrow(mat2)
+```
+
+It's worth to mention that this is just an illustration on how to create
+a function from scratch. The sum of the row value problem had different solutions
+in `R` that doesn't require to create a new function or using `for` loops.
+For this particular problem the `rowSums()` function does the trick.
+In general, it's better to use vectorized versions of the operations and avoid 
+the use of `for` loops when heavy computation are required.
+
+# The `apply` family
+
+Base `R` is equipped with a huge variety of function to perform different tasks.
+The `apply` family of functions is a useful toolbox to solve specific problems
+without the need to use `for` loops.
+The `apply()` function apply a function to an array for an specific dimension(s).
+For example, it may be used to compute the sum by row in a matrix.
+The `lapply()` function apply a function to a list. `sapply()`, `vapply()` and
+`replicate()` are wrappers versions of the `lapply()` for common tasks.
+Finally, the `tapply()` function is useful to compute summary statistics
+by levels of a `factor` or a `character` vector.
+
+```{r}
+# apply a function to an array in a given dimension 
+apply(X = mat2, MARGIN = 1, FUN = sum)
+
+# apply a function to a vector by each level of a factor variable
+tapply(X = dat1$age, INDEX = dat1$gender, FUN = mean)
+
+# sum the rows of a numeric matrix-like for each level of a grouping variable
+rowsum(x = dat1[, c("age", "height")], group = dat1$gender)
+
+# apply a function to each component of a list
+lapply(X = list0, FUN = typeof)
+  # same with a simplify output lapply(x, f, simplify = "array")
+sapply(X = list0, FUN = typeof)
+
+# other functions of the apply family
+# vapply(), replicate(), mapply()
+```
+
+# Help
+
+There are different ways to ask for help in R. 
+
+* When you do not know if there is already a function doing what you would like to do, you can search the answer using the internet. 
+* When you know the name of the function and you would like to know more,
+  you can type `?name of the function` or `??name of the function` to get a
+  description of the function, its arguments and examples.
+* When you do not know the function but know some keywords that are in the
+  documentation, you can type `help.search("keyword")`. It would return the
+  name of functions and their respective packages where the keyword is presented.
+  It only search in installed packages.
+
+```{r help, echo=TRUE, message = FALSE, eval=FALSE}
+?matrix
+?rowSums
+
+help.search("regression")
+```
+
+# Working with data
+
+## Setting the working directory
+
+Setting the working directory corresponds to specifying the path of the folder 
+in which data are and results will be saved. This avoids repeating the path every 
+time we are loading a new file. By default `R` will set the working directory 
+in a folder whose path can be retrieved using the command `getwd()` 
+(getting working directory). 
+To change the working directory into the desired folder, we use the function 
+`setwd()` (set the working directory) and we specify the path of the 
+selected folder as an argument of the function.
+
+Since the backslash character has a special meaning to `R`, we have to either 
+double-up the backslash (escape the backslash as special character) or use the forward slashes instead. If you are using RStudio as the `R` IDE, it sets the working
+directory for you to the project folder by default. This behavior is trigger by
+projects created by RStudio.
+
+We can look at the files within our working directory with the command `list.files()`
+or use the Files pane in RStudio.
+
+```{r wd, include=TRUE, echo=TRUE, message = FALSE, eval=FALSE}
+getwd()
+setwd("C:/Users/spadmin/Desktop/workshopSAOM")
+
+list.files() # Listing the files in the working directory
+```
+
+## Reading and writing data
+
+Data contained in table format files can be read into `R` using the function `read.table()`.
+The outcome of this function is a data frame. 
+We can also write data into table format files using the function `write.table()`. 
+Other functions are available for files with particular extensions 
+(e.g. from SAS or SPSS. Packages `foreign` and `readr`). The functions `read.csv()` and `write.csv()`, 
+and `read.csv2()` and `write.csv2()` are used for comma and semicolon separated value files.
+
+```{r import}
+# We export the data frame dat1 in a txt file comma separated
+# ?write.table
+write.table(dat1, "dat1.txt", sep = ",", row.names = FALSE, col.names = TRUE)
+
+# # For tab spacing you should use  sep = "\t"
+# 
+# We import data using the function read.table. 
+# ? read.table
+dataImport <- read.table("dat1.txt", sep = ",", header = TRUE)
+str(dataImport)
+```
+
+## Saving the workspace and objects to a file
+
+`R` objects exist during your session but are deleted when you exit. 
+However, you will be asked if you want to save an image of your workspace before you leave. 
+You can save the workspace throughout the session using the command `save.image()` 
+and load it with the command `load()`.
+
+```{r workspace}
+save.image("Intro.RData")
+load("Intro.RData")
+```
+
+`R` also offer a way to save single objects with the function `saveRDS()`, and 
+read them back with the function `readRDS()`.
+
+```{r save object}
+saveRDS(dataImport, "dataImport.RDS")
+dataImport <- readRDS("dataImport.RDS")
+```
+
+
+# R projects
+
+RStudio offers the possibility to create `R` projects. When you create a project the working directory is by default set to the project directory and the workspace is automatically saved into that folder. When you open a Rproject:
+
+
+* a new R session (process) is started
+* The scripts, `.RData` and `.Rhistory` files in the project's main directory are loaded (if project options indicate that it should be loaded)  
+* the working directory is set to the project directory.
+
+
+To create a Rproject in Rstudio click on File -> New project
+
+# R packages
+
+`R` is free software. When you install it, a series of functions and data sets are installed. 
+Those functions and data sets are collected into libraries or packages. 
+An R package is a collection of functions and data sets improving existing 
+base R functions or adding new ones. 
+
+To install and load packages the commands `install.packages("name of the package")` 
+and `library("name of the package")` are used.
+
