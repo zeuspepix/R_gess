@@ -1,0 +1,957 @@
+---
+title: "Assignment 1"
+format: pdf
+editor: visual
+---
+
+# Assignment 1
+
+By Marta Adarve, Klaudia Honkisz, Giuseppe Lomoro, Daniella Vuijk
+
+## Packages
+
+First, we import the packages that will be used throughout this assignment. (Note: Please install them on your own using `install.packages("name_of_package")` in case some of them are missing.)
+
+```{r}
+#| output: false
+library(sna)
+library(network)
+library(dplyr)
+library(texreg)
+```
+
+## Task 1: Tie Dependence and CUGs
+
+### 1.1
+
+Number of possible ties: $n(n-1) = 22 \times 21 = 462$
+
+Number of ties in the network: $134$
+
+Probability of observing a tie when choosing one possible dyad at random: $p=\frac{134}{462} = 0.29$
+
+### 1.2
+
+Number of possible dyads: $\frac{n(n-1)}{2} = 231$
+
+Probability of observing a mutual dyad: $p_M = \frac{42}{231} = 0.18$
+
+Probability of observing a asymmetric dyad: $p_A = \frac{50}{231} = 0.22$
+
+Probability of observing a null dyad: $p_N = \frac{139}{231} = 0.60$
+
+### 1.3
+
+If ties are independent with probability $p$, the probability of a specific tie existing is $p$ and not existing is $(1-p)$.
+
+$p_M = p^2 = 0.29^2 = 0.08$
+
+$p_A = 2p(1-p) = 2 \times 0.29 \times 0.71 = 0.41$
+
+$p_N = (1-p)^2 = 0.71^2 = 0.50$
+
+### 1.4
+
+No, it would not be reasonable to assume tie independence since the observed probability of a mutual tie is more than double the theoretical value assuming tie independence. This suggests a strong reciprocity effect: the probability of $i$ considering $j$ as a friend significantly increases the likelihood of a tie from $j$ to $i$.
+
+### 1.5
+
+The probability of a mutual tie is the probability of a tie from $i$ to $j$ multiplied by the probability of a tie from $j$ to $i$.
+
+$P(X_{ij} = 1) = P(X_{ji} = 1) = \frac{9}{21}$
+
+$P(X_{ij} = 1,\, X_{ji} = 1) = (\frac{9}{21})^2 =0.18$
+
+While the probability of a mutual tie is much closer to the observed probability than in the simple $p$ model, assuming a fixed outdegree is unrealistic for social data.
+
+### 1.6
+
+We run the following commands in R to import network data concerning friendship ties in class number 10 at the first wave of observation:
+
+```{r}
+# For reproducibility
+set.seed(161)
+permutations <- 5000
+# Import the file 10_W1.csv as a matrix object
+obsMat = as.matrix(read.csv2("./Lintner/10_W1.csv", header = TRUE, 
+                             check.names = FALSE))[,-1]
+rownames(obsMat) <- colnames(obsMat)
+```
+
+Then we check if the matrix contains missing data (NA) and for this task, impute them with 0. Please note that this is done only for this task, as specified by a question asked during one of the lectures.
+
+```{r}
+# checking for NAs
+table(is.na(obsMat))
+# dealing with NAs via simple imputation
+obsMat[is.na(obsMat)] = 0
+```
+
+The function `cug.test` compares the observed network statistics to a distribution of networks generated under a specific null hypothesis. `cugRec` is the first of the 3 tests we will perform. Its null hypothesis is that the observed reciprocity is what we would expect by chance in a network with the same number of edges, under the conditioning that the size and density of the graph are held constant.
+
+```{r}
+cugRec <- cug.test(obsMat, grecip, cmode = "edges", reps=permutations)
+print(cugRec)
+```
+
+The results indicate that the probability of seeing a reciprocity greater or equal to the observed value is close to 0. In other words, the network has significantly more mutual ties than expected by chance because actors in the network tend to reciprocate relationships.
+
+Next, we test the null hypothesis that the observed in-degree centralization is no different than a random graph with the same number of edges. The conditioning is the same as for the first test, specified through the parameter `cmode`.
+
+```{r}
+cugInd <- cug.test(obsMat, centralization, cmode="edges", 
+                   FUN.arg=list(FUN=degree, cmode="indegree"), 
+                   reps=permutations)
+print(cugInd)
+```
+
+In this case, we do not reject the null hypothesis as there is no evidence that the network is more centralized than expected by chance. This means the network does not have unusually dominant nodes with high degree.
+
+Finally, `cugTrans` tests the null hypothesis that the observed transitivity is what we would expect in a random graph where the dyad census (count of M, A, N) is fixed, as specified by the parameter `cmode`.
+
+```{r}
+cugTrans <- cug.test(obsMat, gtrans, cmode = "dyad.census", reps=permutations)
+print(cugTrans)
+```
+
+We reject the null hypothesis. As is expected from a social network, the network exhibits strong triadic closure, meaning if A is friends with B and B is friends with C, there is high likelihood that A and C share a tie too.
+
+## Task 2: MR-QAP regression
+
+### Data Cleaning
+
+Before we start solving the exercise, we will clean the data. We start with the attributes table.
+
+```{r}
+# Import the file attr.csv
+attributes = read.csv2("./Lintner/attr.csv", header = TRUE)
+
+str(attributes)
+```
+
+First, we convert individual attributes as necessary to be able to include them in our analysis later on. We encode `studentID` and `classroomID` as characters. `gender` is decoded into a binary variable with "female" = 1 and "male" = 0. Lastly, `literacy_end` is converted to a numerical variables.
+
+```{r}
+attributes$studentID <- as.character(attributes$studentID)
+attributes$classroomID <- as.character(attributes$classroomID)
+attributes$literacy_end <- as.numeric(attributes$literacy_end)
+
+# convert categorical data to numeric (gender)
+attributes[attributes$gender == "female",]$gender = 1
+attributes[attributes$gender == "male",]$gender = 0
+
+str(attributes)
+```
+
+### 2.1
+
+We start by importing the data for classroom 10 for the both waves.
+
+```{r}
+
+load_data_by_classroom <- function(wave) {
+  base_path <- "./Lintner/"
+  wave <- sprintf("%02d", wave)
+  classroom_path <- paste(base_path, wave, sep = "")
+  wave_1_path <- paste(classroom_path, "_W1.csv", sep = "")
+  wave_2_path <- paste(classroom_path, "_W2.csv", sep = "")
+
+  wave_1 <- as.matrix(read.csv2(wave_1_path, header = TRUE, 
+                                check.names = FALSE))[,-1]
+  rownames(wave_1) <- colnames(wave_1)
+
+  wave_2 <- as.matrix(read.csv2(wave_2_path, header = TRUE, 
+                                check.names = FALSE))[,-1]
+  rownames(wave_2) <- colnames(wave_2)
+
+  return(list(wave_1, wave_2))
+}
+
+waves_10 <- load_data_by_classroom(10)
+```
+
+Now, we clean both matrices:
+
+```{r}
+drop_indices <- function(df, to_drop) {
+  x_to_drop <- c()
+  full_to_drop <- c()
+  for (item in to_drop) {
+    item <- strtoi(item)
+    full_item <- sprintf("%04d", item)
+    x_to_drop <- append(x_to_drop, paste("X", full_item, sep = ""))
+    full_to_drop <- append(full_to_drop, full_item)
+  }
+
+  col_filtered <- subset(df, select = !(names(df) %in% x_to_drop))
+  filtered <- col_filtered[!(row.names(col_filtered) %in% full_to_drop),]
+  return(filtered)
+}
+
+clean_data <- function(waves, attribute_table, drop_attributes, class_no = 0) {
+
+  output <- list()
+  to_drop <- c()
+
+  # Identifying all the rows with NA's in the wave matrices.
+  for (wave in waves) {
+    rows_with_na <- which(rowSums(is.na(wave)) > 0)
+    to_drop <- append(to_drop, names(rows_with_na))
+  }
+  # Strip leading zero's
+  to_drop <- sub("^0+", "", to_drop)
+
+  # Check for missing attributes
+  # We can brute force this because the only attributes with NAs 
+  # are the ones under investigation.
+  if (class_no > 0) {
+    attribute_table <- attribute_table[(attribute_table$classroomID==class_no),]
+  }
+
+  if (drop_attributes) {
+    all_ids <- attribute_table$studentID
+    attribute_table <- attribute_table[complete.cases(attribute_table),]
+    if (length(to_drop) > 0) {
+      attribute_table <- 
+        attribute_table[!(attribute_table$studentID %in% to_drop),]
+      }
+    diff <- setdiff(all_ids, attribute_table$studentID)
+    to_drop <- append(to_drop, diff)
+  }
+
+  # Keep only unique values
+  to_drop <- unique(to_drop)
+
+  wave_1 <- data.frame(waves[[1]])
+  wave_1 <- drop_indices(wave_1, to_drop)
+  wave_2 <- data.frame(waves[[2]])
+  wave_2 <- drop_indices(wave_2, to_drop)
+
+  return(list(wave_1, wave_2, attribute_table))
+}
+cleaned_data_10 <- clean_data(waves_10, attributes, FALSE, 10)
+cleaned_data_10[3]
+
+clean_10W1 <- cleaned_data_10[[1]]
+clean_10W2 <- cleaned_data_10[[2]]
+
+# sanity check
+identical(dim(clean_10W1), dim(clean_10W2))
+dimensions <- dim(clean_10W1)
+
+cat("Original dimensions: ", dim(waves_10[[1]]), "\n")
+cat("New dimensions: ", dimensions)
+```
+
+We can observe that the data of 3 students was removed. Note that the code written will first collect all the student ID's to be deleted, considering whether or not to check for NA's in attributes, and only then will it delete the associated data. This ensures that we are thorough, without being overly strict when we don't need to be. Furthermore we can be coarse in deleting attribute data, since as noted earlier, the only columns with missing data are those that are of interest to the experiments in 2.2 onward.
+
+We now perform the actual QAP test, to test if friendship nominations in wave 2 are associated with friendship nominations in wave 1. To be precise we seek to test the following hypotheses:
+
+-   $H_0:$ Friendship nominations in wave 2 are not associated with friendship nominations in wave 1.
+-   $H_1:$ Friendship nominations in wave 2 are associated with friendship nominations in wave 1.
+
+```{r}
+nl <- netlogit(clean_10W2, list(clean_10W1), reps = permutations, 
+               nullhyp = "qapspp")
+nl$names <- c("intercept", "wave 1")
+print(nl)
+```
+
+From this result we can tell that friendship ties in wave 1 correlate significantly with friendship ties in wave two (since $Pr(\ge|b|) = 0.000$). The estimate is positive indicating that indeed, friendship nominations in wave 1 are highly predictive of friendship nominations in wave 2. Furthermore its value of 2.71 indicates that an existing friendship tie in wave 1 makes forming one in wave 2 $217.1%$ more likely.
+
+### 2.2
+
+After having seen the effects of friendship nominations in wave 1, we now also seek to test the following hypotheses:
+
+i.  Students with high ending literacy scores are less likely to receive friendship nominations.
+ii. A friendship nomination is more likely between a pair of students of the same gender.
+iii. Students with a high HISEI value are more likely to send friendship nominations than those with lower scores.
+
+In order to make answering later questions easier, we build a function to run the full experiment automatically.
+
+```{r}
+run_experiment <- function(class, print = FALSE) {
+  waves_data <- load_data_by_classroom(class)
+  cleaned_data <- clean_data(waves_data, attributes, TRUE, class)
+  wave_1 <- cleaned_data[[1]]
+  wave_2 <- cleaned_data[[2]]
+  attributes_clean <- cleaned_data[[3]]
+
+  literacy <- attributes_clean$literacy_end
+  gender <- attributes_clean$gender
+  HISEI <- attributes_clean$HISEI
+
+  dimensions = dim(wave_1)
+
+  literacy_reciever <- matrix(literacy, dimensions[1], dimensions[2], 
+                              byrow = TRUE)
+  same_gender <- outer(gender, gender, "==")*1
+  HISEI_sender <- matrix(HISEI, dimensions[1], dimensions[2], byrow = FALSE)
+
+  if (print) {
+    print("WAVE 1")
+    print(wave_1)
+    print("literacy_reciever")
+    print(literacy_reciever)
+    print("same_gender")
+    print(same_gender)
+    print("HISEI_sender")
+    print(HISEI_sender)
+  }
+
+  zm <- list(wave_1, literacy_reciever, same_gender, HISEI_sender)
+
+  cat("Running experiment for classroom No.", class)
+  nl <- netlogit(wave_2, zm, reps = permutations, nullhyp = "qapspp")
+  nl$names <- c("intercept","wave 1", "literacy reciever", 
+                "same gender", "HISEI sender")
+  print(nl)
+}
+run_experiment(10, TRUE)
+```
+
+**Regarding the definition of variables:**
+
+Whether or not two students have the same reported gender is trivially computed, and to the best of our understanding there could be no ambiguous interpretation, we simply check whether or not the reported gender of two students matches.
+
+To see whether or not the other two matrices have been computed correctly, we need to look at the printed output. From which we can deduce that the literacy of the receiver is indeed the same within each column, since the columns indicate the receivers of the ties, the literacy should be the same among all incoming ties. Identically for the HISEI value of the senders we see that within each row it is the same, leading us to conclude that that matrix is computed correctly as well.
+
+### 2.3
+
+In order to interpret the findings of the model we must first turn our attention to the significance. From which we can deduce that the literacy of the receiver, and the HISEI score of the sender are insignificant, with a $Pr(\ge|b|)$ of 0.131 and 0.177, respectively. Both their estimates are positive, but not a lot can be deduced from that since they are also close to zero.
+
+Thus we focus our interpretation on the effect of wave 1 and same gender, both are significant in our current model, with $Pr(\ge|b|)$ scores of 0.000 and 0.000, respectively.
+
+Both wave 1 and same gender have a positive coefficient estimate, indicating that on average, friendships in wave 1, and two students being of the same gender positively correlate with existence of a friendship tie. The estimate for wave 1 indicates that the presence of a friendship tie in wave 1 increases the odds of a friendship tie existing in wave 2 by $231.8\%$. As for gender, in this classroom being of the same gender increases the odds of a friendship tie forming by $186.9\%$.
+
+It is also noteworthy that the intercept is highly negative, meaning that on average students do not have ties between them.
+
+Based on this we can reject hypotheses i and iii, and our data appears to confirm hypothesis ii.
+
+### 2.4
+
+We iterate over the function defined earlier, in order to perform our experiment for all classrooms.
+
+```{r}
+itter <- c(1:5,9:10,12)
+for (i in itter) {
+  run_experiment(i)
+}
+```
+
+### 2.5
+
+Across classrooms similar results appear, tough noteworthy is that the effect of same gender is insignificant in classrooms 4 and 12. The effect of friendship in wave 1 on friendship in wave 2 appears to overall have roughly a similar estimate. However, the estimate of the effect of same gender appears to vary more strongly. From this we can conclude that the effect of wave 1 is the most stable, and the effect of same gender, whilst generally significant, is more unstable, and thus less reliable.
+
+Noteworthy is that in none of the classrooms the literacy of the receiver and the HISEI of the sender have significant results. Their signs do differ between different classrooms, but they are all still rather close to zero so not a lot can be deduced from that.
+
+Another curious finding is that the significance and magnitude of the intercept also varies greatly between classrooms, tough it generally remains negative.
+
+## Task 3: Network Autocorrelation Model
+
+### Data Cleaning
+
+Previously we have done some preliminary cleaning of the attributes table. Now, we also check for missing values in all variables.
+
+```{r}
+# checking for NAs
+table(is.na(attributes$studentID)) # no NAs
+table(is.na(attributes$classroomID)) # no NAs
+table(is.na(attributes$gender)) # no NAs
+table(is.na(attributes$HISEI)) # 31 NAs
+table(is.na(attributes$literacy_end)) # 39 NAs
+```
+
+We observe that there are 31 missing values for the HISEI and 39 for the literacy score at the end of data collection. As asked in the assignment, we extract the IDs of students with NAs and remove the corresponding rows from the data.
+
+```{r}
+students_with_missing_HISEI <- attributes$studentID[is.na(attributes$HISEI)]
+
+students_with_missing_literacy_end <- attributes$
+  studentID[is.na(attributes$literacy_end)]
+
+students_with_missing_attributes <- union(students_with_missing_HISEI, 
+                                          students_with_missing_literacy_end)
+
+attributes_clean <- attributes[complete.cases(attributes), ]
+
+dim(attributes_clean)
+```
+
+Initially we had 276 observations and after this step we are left with 223.
+
+To clean the data for each classroom, we define a function `clean_classroom_data_one_wave`. It takes as input matrix data for only one wave. It removes the rows and columns with either (1) missing friendship data for this classroom at the considered wave and/or (2) missing individual attributes. The function returns one matrix with cleaned data, as well as a list of IDs of students with missing friendship data for this classroom (it can be used to remove the corresponding observations from the attributes table if necessary).
+
+```{r}
+clean_classroom_data_one_wave <- function(matrix){
+  
+  # check for NAs
+  if (any(is.na(matrix))) {
+    rows_with_na <- which(rowSums(is.na(matrix)) > 0)
+    # print("Rows with NAs")
+    # print(rows_with_na)
+    
+    # obtain corresponding studentIDs
+    names_rows_with_na <- names(rows_with_na)
+
+    # removing rows and columns with NAs from adjacency matrix
+    matrix_clean1 <- matrix[-rows_with_na, -rows_with_na]
+  } else {
+    names_rows_with_na <- NULL
+    matrix_clean1 <- matrix
+  }
+
+  # removing rows and columns with NAs in attributes table
+  matrix_clean2 <- matrix_clean1[
+  !rownames(matrix_clean1) %in% students_with_missing_attributes,
+  !colnames(matrix_clean1) %in% students_with_missing_attributes]
+  
+  return(list(
+    mat = matrix_clean2, 
+    na_rows = names_rows_with_na
+    ))
+}
+```
+
+The last thing that remains to be done is removing the students with missing friendship data from the attributes table. However, that will be done below, whenever required by the task.
+
+Now, we move on to solving the exercise.
+
+### 3.1
+
+We start by importing the data for classroom 10 for the second wave.
+
+```{r}
+## Second wave
+# Import the file 10_W2.csv as a matrix object
+obsMat10W2 = as.matrix(read.csv2("./Lintner/10_W2.csv", header = TRUE, 
+                                 check.names = FALSE))[,-1]
+rownames(obsMat10W2) <- colnames(obsMat10W2)
+```
+
+Now, we clean the loaded matrix:
+
+```{r}
+clean_data_10_W2 <- clean_classroom_data_one_wave(obsMat10W2)
+obsMat10W2_clean <- clean_data_10_W2$mat
+
+cat("Original dimensions: ", dim(obsMat10W2), "\n")
+cat("New dimensions: ", dim(obsMat10W2_clean))
+```
+
+We can observe that the data of 5 students was removed. Next, we delete the attributes corresponding to those students as they will be used later in the exercise. Please note that now we only remove IDs of students with missing friendship data. Those with missing attributes were removed in section about data cleaning.
+
+```{r}
+students_to_remove <- clean_data_10_W2$na_rows
+cat("Student IDs to be removed: ", students_to_remove)
+
+attributes_clean_10_W2 <- attributes_clean %>%
+  filter(!studentID %in% students_to_remove) %>% filter(classroomID == "10")
+
+# check if everything was removed correctly
+attributes_clean_10_W2
+```
+
+Now, we will make sure that the friendship data matrix is row stochastic to match the convention for this model.
+
+```{r}
+mat10 <- sweep(obsMat10W2_clean, 1, 
+               ifelse(rowSums(obsMat10W2_clean) == 0, 1,
+                      rowSums(obsMat10W2_clean)),
+               FUN = "/")
+```
+
+Next, we will need the ending literacy score as the dependent variable.
+
+```{r}
+literacy_end_10W2 <- attributes_clean_10_W2 %>% pull(literacy_end)
+```
+
+Now, we can run a NAM treating the ending literacy score as the dependent variable and the friendship in wave 2 as the network variable. Mathematically, this can be written as:
+
+$$
+y = \rho Wy + \varepsilon
+$$
+
+where $y$ is a vector with ending literacy score, $W$ is a matrix with friendship weights in wave 2, $\rho$ is the network autocorrelation term, and $\varepsilon$ is the error term assumed to be normally distributed (i.e., $\varepsilon\sim N(0, \sigma^2I)$).
+
+```{r}
+nam10 <- lnam(y=literacy_end_10W2, W1=mat10)
+print(summary(nam10))
+```
+
+```{r}
+# print the results nicely
+screenreg(nam10, custom.model.names = "Classroom 10",
+          custom.coef.names = c("network effect"))
+```
+
+From the above output, we can observe that the estimated network autocorrelation is positive ($\hat{\rho}=0.85$) and significant at the $\alpha=0.001$ significance level ($p < 2e-16$). This means that in classroom 10, students' ending literacy scores are strongly correlated with the ending literacy scores of their friends at the end of the school year (i.e., in the second wave). In other words, the student's literacy score tends to be higher if their friends have higher literacy scores.
+
+### 3.2
+
+We create a covariate matrix of gender and HISEI scores.
+
+```{r}
+covars10 = model.matrix(literacy_end ~ gender + HISEI,
+                      data = attributes_clean_10_W2)
+```
+
+Now, we can fit a NAM treating the ending literacy score as the dependent variable, the friendship in wave 2 as the network variable and gender and HISEI scores as exogenous variables. Mathematically, this can be written as:
+
+$$
+y = X\beta + \rho Wy + \varepsilon
+$$
+
+where $y$ is a vector with ending literacy score, $X$ is a matrix with covariates (here: gender and HISEI scores), $W$ is a matrix with friendship weights in wave 2, $\beta$ is a vector with regression coefficients (for the intercept and covariates), $\rho$ is the network autocorrelation term, and $\varepsilon$ is the error term assumed to be normally distributed (i.e., $\varepsilon\sim N(0, \sigma^2I)$).
+
+### 3.3
+
+Run a NAM treating the ending literacy score as the dependent variable, the friendship in wave 2 as the network variable and gender and HISEI scores as exogenous variables.
+
+```{r}
+nam10_cov <- lnam(y=literacy_end_10W2, x=covars10, W1=mat10)
+print(summary(nam10_cov))
+```
+
+```{r}
+# print the results nicely
+screenreg(nam10_cov, custom.model.names = "Classroom 10",
+          custom.coef.names = 
+            c("(Intercept)", "female", "HISEI", "network effect"))
+```
+
+This time, we can observe that the estimated effect of being a female is positive ($\hat{\beta}_1=20.88$) and significant at the $\alpha=0.01$ significance level ($p = 0.005$). This means that in classroom 10, girls get literacy scores almost 21 points higher than boys, controlling for the HISEI and the network effect. For the HISEI scores, the effect was also positive ($\hat{\beta}_2=0.97$) and highly significant ($p = 3.97e-05$). This suggests that for students in classroom 10, holding gender and network effects constant, each one-unit increase in the HISEI increases the ending literacy scores by 0.97. Lastly, controlling for gender and HISEI scores, the estimated network autocorrelation is negative ($\hat{\rho}=-0.94$) and significant at the $\alpha=0.05$ significance level ($p = 0.028$). This means that in classroom 10, students' ending literacy scores are negatively correlated with the ending literacy scores of their friends at the end of the school year (i.e., in the second wave). In other words, the students with lower literacy scores tend to have friends with higher literacy scores and vice versa.
+
+Overall, this means that female students and those, whose parents' have higher socioeconomic status, achieve higher ending literacy scores. Moreover, we found support for the autocorrelation hypothesis. Interestingly, the result is different from the model with no covariates. Here, we can conclude that students tend to connect with classmates with different literacy scores.
+
+### 3.4
+
+Since the two models compare different things, lets state what we are comparing first. The effect of gender and HISEI.
+
+There is a high correlation between gender and the rest of the variables. In both models there were positive correlations, even though that is not transitive and thus cannot be combined to make other predictions. In QAP we have no correlation between literacy scores and ties, whilst in NAM we have a significant negative correlation, and combining our two previous statements would imply a positive correlation, although by the non-transitivity we don't get a contradiction.
+
+HISEI on the other hand is only relevant in NAM, and highly relevant at that, having a high significance. In QAP there is no correlation in one direction of the ties. We don't have information about the reverse direction though.
+
+These differences indicates that not all variables correlate equally with each other, so making multiple models helps to notice what variables to keep. The most peculiar comparison is the one about correlation of literacy scores and ties. The various models have different conclusions, which might indicate that for this specific case, one might need a different model or test to verify the truth. Even within the models themselves. In NAM the correlation was negative before adding the covariates.
+
+We will start by looking at the effect of gender and HISEI scores. In both models the estimated coefficient for being a female was significant and positive, which means that in classroom 10, gender plays a role in the forming of friendship ties and affects the literacy scores at the end of the year. The effect of the HISEI score was positive in both models but significant only in the NAM model. This can suggests that the socioeconomic status is associated with test scores but does not affect the formation of ties between students.
+
+In the QAP model, the ending literacy score was insignificant which suggests that it does not influence friendship formation among students. On the other hand, in the NAM model we found support for the autocorrelation hypothesis, meaning that students with lower literacy scores tend to have friends with higher literacy scores. Furthermore, the QAP results indicate that the presence of a friendship tie in wave 1 increases the odds of a friendship tie existing in wave 2. Data about friendship in the first wave was not included in the NAM model so nothing can be said about a potential relationship with ending literacy scores.
+
+These two models are used to capture different yet complementary processes. QAP tries to assess whether friendship ties are formed based on similarity between students, while NAM evaluates whether individuals’ outcomes depend on their peers.
+
+### 3.5
+
+We will now repeat the NAM (with covariates) analysis for the remaining classrooms.
+
+We start with classroom 1.
+
+```{r}
+### Classroom 1
+## Second wave
+# Import the file 01_W2.csv as a matrix object
+obsMat1W2 = as.matrix(read.csv2("./Lintner/01_W2.csv", 
+                                header = TRUE, check.names = FALSE))[,-1]
+colnames(obsMat1W2) <- sub("^0+", "", colnames(obsMat1W2))
+rownames(obsMat1W2) <- colnames(obsMat1W2)
+
+# clean the data
+clean_data_1_W2 <- clean_classroom_data_one_wave(obsMat1W2)
+obsMat1W2_clean <- clean_data_1_W2$mat
+
+cat("Original dimensions: ", dim(obsMat1W2), "\n")
+cat("New dimensions: ", dim(obsMat1W2_clean), "\n")
+
+students_to_remove <- clean_data_1_W2$na_rows
+cat("Student IDs to be removed: ", students_to_remove)
+
+attributes_clean_1_W2 <- attributes_clean %>%
+  filter(!studentID %in% students_to_remove) %>% filter(classroomID == "1")
+
+# check if everything was removed correctly
+attributes_clean_1_W2
+```
+
+```{r}
+# create variables to be used for NAM analysis
+mat1 <- sweep(obsMat1W2_clean, 1, 
+               ifelse(rowSums(obsMat1W2_clean) == 0, 1,
+                      rowSums(obsMat1W2_clean)),
+               FUN = "/")
+
+literacy_end_1W2 <- attributes_clean_1_W2 %>% pull(literacy_end)
+
+covars1 <- model.matrix(literacy_end ~ gender + HISEI,
+                      data = attributes_clean_1_W2)
+
+# fit the model
+nam1_cov <- lnam(y=literacy_end_1W2, x=covars1, W1=mat1)
+print(summary(nam1_cov))
+```
+
+```{r}
+# print the results nicely
+screenreg(nam1_cov, custom.model.names = "Classroom 1",
+          custom.coef.names = 
+            c("(Intercept)", "female", "HISEI", "network effect"))
+```
+
+For classroom 1, we can observe that the estimated effect of HISEI is positive ($\hat{\beta}_2=0.76$) and significant at the $\alpha=0.01$ level. Holding gender and network effects constant, each one-unit increase in the HISEI increases the ending literacy scores by 0.76. This means that students whose parents have higher socioeconomic status tend to get higher literacy scores. For this classroom, the estimated effect for gender and autocorrelation are statistically insignificant at $\alpha=0.05$ (with $p=0.38$ and $p=0.66$, respectively). Therefore, we do not find support for the autocorrelation hypothesis meaning that there is no evidence that students' literacy scores are associated with their friends' scores.
+
+Moving onto classroom 2.
+
+```{r}
+### Classroom 2
+## Second wave
+# Import the file 02_W2.csv as a matrix object
+obsMat2W2 = as.matrix(read.csv2("./Lintner/02_W2.csv", 
+                                header = TRUE, check.names = FALSE))[,-1]
+colnames(obsMat2W2) <- sub("^0+", "", colnames(obsMat2W2))
+rownames(obsMat2W2) <- colnames(obsMat2W2)
+
+# clean the data
+clean_data_2_W2 <- clean_classroom_data_one_wave(obsMat2W2)
+obsMat2W2_clean <- clean_data_2_W2$mat
+
+cat("Original dimensions: ", dim(obsMat2W2), "\n")
+cat("New dimensions: ", dim(obsMat2W2_clean), "\n")
+
+students_to_remove <- clean_data_2_W2$na_rows
+cat("Student IDs to be removed: ", students_to_remove, "\n")
+
+attributes_clean_2_W2 <- attributes_clean %>%
+  filter(!studentID %in% students_to_remove) %>% filter(classroomID == "2")
+
+# check if everything was removed correctly
+attributes_clean_2_W2
+```
+
+```{r}
+# create variables to be used for NAM analysis
+mat2 <- sweep(obsMat2W2_clean, 1, 
+               ifelse(rowSums(obsMat2W2_clean) == 0, 1,
+                      rowSums(obsMat2W2_clean)),
+               FUN = "/")
+
+literacy_end_2W2 <- attributes_clean_2_W2 %>% pull(literacy_end)
+
+covars2 <- model.matrix(literacy_end ~ gender + HISEI,
+                      data = attributes_clean_2_W2)
+
+# fit the model
+nam2_cov <- lnam(y=literacy_end_2W2, x=covars2, W1=mat2)
+print(summary(nam2_cov))
+```
+
+```{r}
+# print the results nicely
+screenreg(nam2_cov, custom.model.names = "Classroom 2",
+          custom.coef.names = 
+            c("(Intercept)", "female", "HISEI", "network effect"))
+```
+
+In classroom 2, the only significant coefficient is the intercept at $\alpha=0.05$ ($p = 0.02$). This means that the ending literacy score for a boy with HISEI = 0 is approximately 49 points. For this classroom, we find no support for the effects of gender, HISEI, or autocorrelation. These estimates are insignificant with $p = 0.82$, $p = 0.70$, and $p = 0.48$, respectively.
+
+Moving onto classroom 3.
+
+```{r}
+### Classroom 3
+## Second wave
+# Import the file 03_W2.csv as a matrix object
+obsMat3W2 = as.matrix(read.csv2("./Lintner/03_W2.csv", 
+                                header = TRUE, check.names = FALSE))[,-1]
+colnames(obsMat3W2) <- sub("^0+", "", colnames(obsMat3W2))
+rownames(obsMat3W2) <- colnames(obsMat3W2)
+
+# clean the data
+clean_data_3_W2 <- clean_classroom_data_one_wave(obsMat3W2)
+obsMat3W2_clean <- clean_data_3_W2$mat
+
+cat("Original dimensions: ", dim(obsMat3W2), "\n")
+cat("New dimensions: ", dim(obsMat3W2_clean), "\n")
+
+students_to_remove <- clean_data_3_W2$na_rows
+cat("Student IDs to be removed: ", students_to_remove, "\n")
+
+attributes_clean_3_W2 <- attributes_clean %>%
+  filter(!studentID %in% students_to_remove) %>% filter(classroomID == "3")
+
+# check if everything was removed correctly
+attributes_clean_3_W2
+```
+
+```{r}
+# create variables to be used for NAM analysis
+mat3 <- sweep(obsMat3W2_clean, 1, 
+               ifelse(rowSums(obsMat3W2_clean) == 0, 1,
+                      rowSums(obsMat3W2_clean)),
+               FUN = "/")
+
+literacy_end_3W2 <- attributes_clean_3_W2 %>% pull(literacy_end)
+
+covars3 <- model.matrix(literacy_end ~ gender + HISEI,
+                      data = attributes_clean_3_W2)
+
+# fit the model
+nam3_cov <- lnam(y=literacy_end_3W2, x=covars3, W1=mat3)
+print(summary(nam3_cov))
+```
+
+```{r}
+# print the results nicely
+screenreg(nam3_cov, custom.model.names = "Classroom 3",
+          custom.coef.names = 
+            c("(Intercept)", "female", "HISEI", "network effect"))
+```
+
+For classroom 3, all estimated coefficients are statistically insignificant at the $\alpha=0.05$ level. This suggests that none of the included variables, i.e., gender, HISEI, friendship, can be associated with the ending literacy scores.
+
+Moving onto classroom 4.
+
+```{r}
+### Classroom 4
+## Second wave
+# Import the file 04_W2.csv as a matrix object
+obsMat4W2 = as.matrix(read.csv2("./Lintner/04_W2.csv", 
+                                header = TRUE, check.names = FALSE))[,-1]
+colnames(obsMat4W2) <- sub("^0+", "", colnames(obsMat4W2))
+rownames(obsMat4W2) <- colnames(obsMat4W2)
+
+# clean the data
+clean_data_4_W2 <- clean_classroom_data_one_wave(obsMat4W2)
+obsMat4W2_clean <- clean_data_4_W2$mat
+
+cat("Original dimensions: ", dim(obsMat4W2), "\n")
+cat("New dimensions: ", dim(obsMat4W2_clean), "\n")
+
+students_to_remove <- clean_data_4_W2$na_rows
+cat("Student IDs to be removed: ", students_to_remove, "\n")
+
+attributes_clean_4_W2 <- attributes_clean %>%
+  filter(!studentID %in% students_to_remove) %>% filter(classroomID == "4")
+
+# check if everything was removed correctly
+attributes_clean_4_W2
+```
+
+```{r}
+# create variables to be used for NAM analysis
+mat4 <- sweep(obsMat4W2_clean, 1, 
+               ifelse(rowSums(obsMat4W2_clean) == 0, 1,
+                      rowSums(obsMat4W2_clean)),
+               FUN = "/")
+
+literacy_end_4W2 <- attributes_clean_4_W2 %>% pull(literacy_end)
+
+covars4 <- model.matrix(literacy_end ~ gender + HISEI,
+                      data = attributes_clean_4_W2)
+
+# fit the model
+nam4_cov <- lnam(y=literacy_end_4W2, x=covars4, W1=mat4)
+print(summary(nam4_cov))
+```
+
+```{r}
+# print the results nicely
+screenreg(nam4_cov, custom.model.names = "Classroom 4",
+          custom.coef.names = 
+            c("(Intercept)", "female", "HISEI", "network effect"))
+```
+
+For classroom 4, the results are the same as for classroom 3. That is all estimated coefficients are statistically insignificant at the $\alpha=0.05$ level. This suggests that none of the included variables, i.e., gender, HISEI, friendship, can be associated with the ending literacy scores.
+
+Moving onto classroom 5.
+
+```{r}
+### Classroom 5
+## Second wave
+# Import the file 05_W2.csv as a matrix object
+obsMat5W2 = as.matrix(read.csv2("./Lintner/05_W2.csv", 
+                                header = TRUE, check.names = FALSE))[,-1]
+colnames(obsMat5W2) <- sub("^0+", "", colnames(obsMat5W2))
+rownames(obsMat5W2) <- colnames(obsMat5W2)
+
+# clean the data
+clean_data_5_W2 <- clean_classroom_data_one_wave(obsMat5W2)
+obsMat5W2_clean <- clean_data_5_W2$mat
+
+cat("Original dimensions: ", dim(obsMat5W2), "\n")
+cat("New dimensions: ", dim(obsMat5W2_clean), "\n")
+
+students_to_remove <- clean_data_5_W2$na_rows
+cat("Student IDs to be removed: ", students_to_remove, "\n")
+
+attributes_clean_5_W2 <- attributes_clean %>%
+  filter(!studentID %in% students_to_remove) %>% filter(classroomID == "5")
+
+# check if everything was removed correctly
+attributes_clean_5_W2
+```
+
+```{r}
+# create variables to be used for NAM analysis
+mat5 <- sweep(obsMat5W2_clean, 1, 
+               ifelse(rowSums(obsMat5W2_clean) == 0, 1,
+                      rowSums(obsMat5W2_clean)),
+               FUN = "/")
+
+literacy_end_5W2 <- attributes_clean_5_W2 %>% pull(literacy_end)
+
+covars5 <- model.matrix(literacy_end ~ gender + HISEI,
+                      data = attributes_clean_5_W2)
+
+# fit the model
+nam5_cov <- lnam(y=literacy_end_5W2, x=covars5, W1=mat5)
+print(summary(nam5_cov))
+```
+
+```{r}
+# print the results nicely
+screenreg(nam5_cov, custom.model.names = "Classroom 5",
+          custom.coef.names = 
+            c("(Intercept)", "female", "HISEI", "network effect"))
+```
+
+In classroom 5, the only significant coefficient is the intercept at $\alpha=0.1$ ($p = 0.054$). This means that the ending literacy score for a boy with HISEI = 0 is approximately 66 points. For this classroom, we find no support for the effects of gender, HISEI, or autocorrelation. These estimates are insignificant with $p = 0.60$, $p = 0.73$, and $p = 0.68$, respectively.
+
+Moving onto classroom 9.
+
+```{r}
+### Classroom 9
+## Second wave
+# Import the file 09_W2.csv as a matrix object
+obsMat9W2 = as.matrix(read.csv2("./Lintner/09_W2.csv", 
+                                header = TRUE, check.names = FALSE))[,-1]
+colnames(obsMat9W2) <- sub("^0+", "", colnames(obsMat9W2))
+rownames(obsMat9W2) <- colnames(obsMat9W2)
+
+# clean the data
+clean_data_9_W2 <- clean_classroom_data_one_wave(obsMat9W2)
+obsMat9W2_clean <- clean_data_9_W2$mat
+
+cat("Original dimensions: ", dim(obsMat9W2), "\n")
+cat("New dimensions: ", dim(obsMat9W2_clean), "\n")
+
+students_to_remove <- clean_data_9_W2$na_rows
+cat("Student IDs to be removed: ", students_to_remove, "\n")
+
+attributes_clean_9_W2 <- attributes_clean %>%
+  filter(!studentID %in% students_to_remove) %>% filter(classroomID == "9")
+
+# check if everything was removed correctly
+attributes_clean_9_W2
+```
+
+```{r}
+# create variables to be used for NAM analysis
+mat9 <- sweep(obsMat9W2_clean, 1, 
+               ifelse(rowSums(obsMat9W2_clean) == 0, 1,
+                      rowSums(obsMat9W2_clean)),
+               FUN = "/")
+
+literacy_end_9W2 <- attributes_clean_9_W2 %>% pull(literacy_end)
+
+covars9 <- model.matrix(literacy_end ~ gender + HISEI,
+                      data = attributes_clean_9_W2)
+
+# fit the model
+nam9_cov <- lnam(y=literacy_end_9W2, x=covars9, W1=mat9)
+print(summary(nam9_cov))
+```
+
+```{r}
+# print the results nicely
+screenreg(nam9_cov, custom.model.names = "Classroom 9",
+          custom.coef.names = 
+            c("(Intercept)", "female", "HISEI", "network effect"))
+```
+
+For classroom 9, the results are the same as for classrooms 3 and 4. That is all estimated coefficients are statistically insignificant at the $\alpha=0.05$ level. This suggests that none of the included variables, i.e., gender, HISEI, friendship, can be associated with the ending literacy scores.
+
+Moving onto classroom 12.
+
+```{r}
+### Classroom 12
+## Second wave
+# Import the file 12_W2.csv as a matrix object
+obsMat12W2 = as.matrix(read.csv2("./Lintner/12_W2.csv", 
+                                 header = TRUE, check.names = FALSE))[,-1]
+rownames(obsMat12W2) <- colnames(obsMat12W2)
+
+# clean the data
+clean_data_12_W2 <- clean_classroom_data_one_wave(obsMat12W2)
+obsMat12W2_clean <- clean_data_12_W2$mat
+
+cat("Original dimensions: ", dim(obsMat12W2), "\n")
+cat("New dimensions: ", dim(obsMat12W2_clean), "\n")
+
+students_to_remove <- clean_data_12_W2$na_rows
+cat("Student IDs to be removed: ", students_to_remove, "\n")
+
+attributes_clean_12_W2 <- attributes_clean %>%
+  filter(!studentID %in% students_to_remove) %>% filter(classroomID == "12")
+
+# check if everything was removed correctly
+attributes_clean_12_W2
+```
+
+```{r}
+# create variables to be used for NAM analysis
+mat12 <- sweep(obsMat12W2_clean, 1, 
+               ifelse(rowSums(obsMat12W2_clean) == 0, 1,
+                      rowSums(obsMat12W2_clean)),
+               FUN = "/")
+
+literacy_end_12W2 <- attributes_clean_12_W2 %>% pull(literacy_end)
+
+covars12 <- model.matrix(literacy_end ~ gender + HISEI,
+                      data = attributes_clean_12_W2)
+
+# fit the model
+nam12_cov <- lnam(y=literacy_end_12W2, x=covars12, W1=mat12)
+print(summary(nam12_cov))
+```
+
+```{r}
+# print the results nicely
+screenreg(nam12_cov, custom.model.names = "Classroom 12",
+          custom.coef.names = 
+            c("(Intercept)", "female", "HISEI", "network effect"))
+```
+
+For classroom 12, the results are again the same as for classrooms 3, 4, and 9. That is all estimated coefficients are statistically insignificant at the $\alpha=0.05$ level. This suggests that none of the included variables, i.e., gender, HISEI, friendship, can be associated with the ending literacy scores.
+
+### 3.6
+
+We start by creating an overview with the results from all fitted NAM models with covariates.
+
+```{r}
+models1 <- list(
+  "Classroom 1" = nam1_cov,
+  "Classroom 2" = nam2_cov,
+  "Classroom 3" = nam3_cov,
+  "Classroom 4" = nam4_cov
+)
+
+models2 <- list(
+  "Classroom 5" = nam5_cov,
+  "Classroom 9" = nam9_cov,
+  "Classroom 10" = nam10_cov,
+  "Classroom 12" = nam12_cov
+)
+
+# results from first 4 models
+screenreg(models1,
+          custom.coef.names = 
+            c("(Intercept)", "female", "HISEI", "network effect"))
+```
+
+```{r}
+# results from last 4 models
+screenreg(models2,
+          custom.coef.names = 
+            c("(Intercept)", "female", "HISEI", "network effect"))
+```
+
+Looking at the above table, we can observe that the results observed for classroom 10 are not generalizable. The effect of being a female is statistically significant only in classroom 10 (at $\alpha=0.01$), the effect of HISEI is significant only in classrooms 1 and 10 (at levels $\alpha=0.01$ and $\alpha=0.001$, respectively). Lastly, the network effect of friendships is significant only in classroom 10 (at $\alpha=0.05$). This suggest that our hypothesis that gender, socioeconomic status and being friends with a classmate cannot generally be associated with the literacy score at the end of the school year. From the above results, one could conclude that classroom 10 is an outlier in this aspect as there all those effects are statistically significant.
